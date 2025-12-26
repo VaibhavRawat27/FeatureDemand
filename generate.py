@@ -1,32 +1,58 @@
 import pandas as pd
 import numpy as np
 
-# 1️⃣ Load the full Superstore dataset safely
-df = pd.read_csv("Superstore.csv", encoding='ISO-8859-1')
-
-# 2️⃣ Aggregate by Product ID to create a small dataset
-agg = df.groupby(['Product ID', 'Category', 'Product Name'], as_index=False).agg({
-    'Sales': 'sum',
-    'Profit': 'sum'
-})
-
-# 3️⃣ Add monthly_demand (some known, some unknown)
-# We'll mark a few products as unknown (NaN) for testing
 np.random.seed(42)
-agg['monthly_demand'] = np.random.randint(5, 20, size=len(agg))
-# Make some unknown
-agg.loc[agg.index[-3:], 'monthly_demand'] = np.nan
 
-# 4️⃣ Add 'price' and 'description' columns for your main code
-# For simplicity, price = Sales / random quantity, description = product name
-agg['price'] = agg['Sales'] / np.random.randint(1, 5, size=len(agg))
-agg['description'] = agg['Product Name']
+# ---------------- CONFIG ----------------
+categories = ["Earphones", "Mobile", "Television", "Laptop", "Smartwatch"]
+brands = ["AlphaTech", "BetaGear", "GammaElectro", "DeltaTech", "OmegaWare"]
+products_per_cat = 10  # known products per category
+months = ["2024-01", "2024-02", "2024-03"]
 
-# 5️⃣ Normalize column names (optional but recommended)
-agg.columns = agg.columns.str.strip().str.lower()
-agg.rename(columns={'product id':'product_id', 'product name':'description'}, inplace=True)
+rows = []
+pid_counter = 1000
 
-# 6️⃣ Save processed CSV for main.py
-agg.to_csv("processed_products.csv", index=False)
-print("✅ processed_products.csv generated with sample demand values.")
-print(agg.head(10))
+# ---------------- KNOWN PRODUCTS ----------------
+for cat in categories:
+    for i in range(products_per_cat):
+        brand = np.random.choice(brands)
+        name = f"{brand} {cat} Model {i+1}"
+        price = np.random.randint(500, 5000)
+        for m in months:
+            monthly_units = np.random.randint(10, 50)
+            rows.append([
+                f"P{pid_counter}", name, "Electronics", m, price,
+                monthly_units, monthly_units, False
+            ])
+        pid_counter += 1
+
+# ---------------- COLD-START PRODUCT ----------------
+for cat in categories:
+    brand = np.random.choice(brands)
+    name = f"{brand} {cat} New Launch"
+    price = np.random.randint(500, 5000)
+    for idx, m in enumerate(months):
+        if idx == 2:  # launch month, leave monthly_units empty
+            monthly_units = np.nan
+            true_demand = np.random.randint(10, 50)
+            is_launch = True
+        else:
+            monthly_units = np.random.randint(10, 50)
+            true_demand = monthly_units
+            is_launch = False
+        rows.append([
+            f"P{pid_counter}", name, "Electronics", m, price,
+            monthly_units, true_demand, is_launch
+        ])
+    pid_counter += 1
+
+# ---------------- CREATE DATAFRAME ----------------
+df = pd.DataFrame(rows, columns=[
+    "product_id", "product_name", "category", "month", 
+    "avg_price", "monthly_units", "true_demand", "is_launch"
+])
+
+# ---------------- SAVE CSV ----------------
+df.to_csv("electronics_single_coldstart.csv", index=False)
+print("✅ electronics_single_coldstart.csv created with only 1 empty product unit")
+print(df.tail(10))
