@@ -2,116 +2,120 @@ import pandas as pd
 import numpy as np
 from features.encoder import FeatureEncoder
 from similarity.similarity import SimilarityEngine
-from forecasting.predictor import DemandPredictor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 # -------------------------------
 # 1️⃣ Load dataset
 # -------------------------------
-df = pd.read_csv("processed_products.csv")
+df = pd.read_csv("data/products.csv")
 
-# Ensure numeric monthly_demand
-df['monthly_demand'] = pd.to_numeric(df['monthly_demand'], errors='coerce')
-
-# Split known vs unknown products
-known_df = df[df['monthly_demand'].notna()].copy()
-unknown_df = df[df['monthly_demand'].isna()].copy()
-
-if len(known_df) < 1:
-    raise ValueError("You must have at least 1 product with known demand")
+df["monthly_units"] = pd.to_numeric(df["monthly_units"], errors="coerce")
+df["true_demand"] = pd.to_numeric(df["true_demand"], errors="coerce")
+df["avg_price"] = pd.to_numeric(df["avg_price"], errors="coerce")
 
 # -------------------------------
-# 2️⃣ Initialize components
+# 2️⃣ Split known vs cold-start
+# -------------------------------
+known_df = df[df["monthly_units"].notna()].copy()
+unknown_df = df[df["monthly_units"].isna()].copy()
+
+# Rename for encoder
+for d in [known_df, unknown_df]:
+    d.rename(columns={
+        "monthly_units": "monthly_demand",
+        "avg_price": "price",
+        "product_name": "description"
+    }, inplace=True)
+
+# -------------------------------
+# 3️⃣ Init components
 # -------------------------------
 encoder = FeatureEncoder()
-sim_engine = SimilarityEngine(k=5)  # top-k similar products
-predictor = DemandPredictor()
+sim_engine = SimilarityEngine(k=5)
 
-print("\n=== Cold-Start Demand Predictions ===\n")
+print("\n=== Cold-Start Demand Predictions (Launch Month) ===\n")
+
+predictions = []
 
 # -------------------------------
-# 3️⃣ Predict unknown/new products
+# 4️⃣ Predict cold-start products
 # -------------------------------
-for idx_new, new_product in unknown_df.iterrows():
-    encoder.fit(known_df)
-    X_existing = encoder.transform(known_df)
-    X_new = encoder.transform(pd.DataFrame([new_product]))
+for _, new_prod in unknown_df.iterrows():
 
-    # Find top similar products
-    top_idx, sims = sim_engine.find_similar(X_new, X_existing)
-    demands = known_df.iloc[top_idx]["monthly_demand"].astype(float).values
-    sims = np.maximum(sims, 0)
+    # 🔒 CATEGORY FILTER (huge improvement)
+    same_cat = known_df[known_df["category"] == new_prod["category"]]
 
-    # Clip extreme demands to reduce MAPE
-    if len(demands) > 1:
-        low, high = np.percentile(demands, [10, 90])
-        demands = np.clip(demands, low, high)
+    if len(same_cat) == 0:
+        fallback = known_df["monthly_demand"].median()
+        predictions.append(fallback)
+        continue
 
-    # Weighted prediction
-    if sims.sum() == 0:
-        weights = np.ones_like(sims) / len(sims)
+    encoder.fit(same_cat)
+    X_known = encoder.transform(same_cat)
+    X_new = encoder.transform(pd.DataFrame([new_prod]))
+
+    idxs, sims = sim_engine.find_similar(X_new, X_known)
+    sims = np.nan_to_num(sims, nan=0.0, posinf=0.0, neginf=0.0)
+
+    demands = same_cat.iloc[idxs]["monthly_demand"].values.astype(float)
+    prices = same_cat.iloc[idxs]["price"].values.astype(float)
+
+    # 🔥 PRICE PENALTY (KEY)
+    price_diff = np.abs(prices - new_prod["price"]) / new_prod["price"]
+    price_weight = np.exp(-price_diff)
+
+    sims = sims * price_weight
+
+    # Robust clipping
+    if len(demands) > 2:
+        lo, hi = np.percentile(demands, [20, 80])
+        demands = np.clip(demands, lo, hi)
+
+    # 🚑 HARD FALLBACK (no NaN ever)
+    if sims.sum() <= 1e-6:
+        pred = np.median(demands)
+        weights = np.ones_like(demands) / len(demands)
     else:
         weights = sims / sims.sum()
-    pred = float(np.dot(demands, weights))
-    pred = max(pred, 0)
-
-    # Confidence interval (95%)
-    std = np.sqrt(np.dot(weights, (demands - pred)**2))
-    ci_lower = max(pred - 1.96 * std, 0)
-    ci_upper = pred + 1.96 * std
-
-    # Display results
-    print(f"Product ID: {new_product['product_id']}")
-    print(f"Predicted Demand: {pred:.0f}")
-    print(f"95% Confidence Interval: [{ci_lower:.0f}, {ci_upper:.0f}]")
-    print("Top Similar Products:")
-    for rank, sim_idx in enumerate(top_idx):
-        sp = known_df.iloc[sim_idx]
-        print(f"  {rank+1}. {sp['product_id']} | Demand: {sp['monthly_demand']} | Similarity: {sims[rank]:.2f}")
-    print("-" * 50)
-
-# -------------------------------
-# 4️⃣ Evaluate on known products
-# -------------------------------
-if len(known_df) > 1:
-    eval_true = []
-    eval_pred = []
-
-    for i in range(1, len(known_df)):
-        existing = known_df.iloc[:i].copy()
-        new_product = known_df.iloc[i].copy()
-
-        encoder.fit(existing)
-        X_existing = encoder.transform(existing)
-        X_new = encoder.transform(pd.DataFrame([new_product]))
-
-        top_idx, sims = sim_engine.find_similar(X_new, X_existing)
-        demands = existing.iloc[top_idx]["monthly_demand"].astype(float).values
-        sims = np.maximum(sims, 0)
-
-        if len(demands) > 1:
-            low, high = np.percentile(demands, [10, 90])
-            demands = np.clip(demands, low, high)
-
-        if sims.sum() == 0:
-            weights = np.ones_like(sims) / len(sims)
-        else:
-            weights = sims / sims.sum()
-
         pred = float(np.dot(demands, weights))
-        pred = max(pred, 0)
 
-        eval_true.append(float(new_product["monthly_demand"]))
-        eval_pred.append(pred)
+    pred = max(pred, 0)
+    predictions.append(pred)
 
-    eval_true = np.array(eval_true, dtype=float)
-    eval_pred = np.array(eval_pred, dtype=float)
+    # CI
+    std = np.sqrt(np.dot(weights, (demands - pred) ** 2))
+    ci_l = max(pred - 1.96 * std, 0)
+    ci_u = pred + 1.96 * std
 
-    mae = mean_absolute_error(eval_true, eval_pred)
-    rmse = np.sqrt(mean_squared_error(eval_true, eval_pred))
-    mape = np.mean(np.abs((eval_true - eval_pred) / eval_true)) * 100
+    # ---------------- PRINT ----------------
+    print(f"Product ID: {new_prod['product_id']}")
+    print(f"Predicted Demand: {pred:.1f}")
+    print(f"95% CI: [{ci_l:.1f}, {ci_u:.1f}]")
+    print("Matched Products:")
 
-    print("\n=== Evaluation Metrics on Known Products ===")
-    print(f"MAE: {mae:.2f}")
-    print(f"RMSE: {rmse:.2f}")
-    print(f"MAPE: {mape:.2f}%")
+    for i, idx in enumerate(idxs):
+        kp = same_cat.iloc[idx]
+        print(
+            f"  - {kp['product_id']} | {kp['description']} | "
+            f"Demand={kp['monthly_demand']}"
+        )
+    print("-" * 55)
+
+# -------------------------------
+# 5️⃣ Evaluation (TRUE cold-start)
+# -------------------------------
+y_true = unknown_df["true_demand"].values.astype(float)
+y_pred = np.array(predictions, dtype=float)
+
+mask = np.isfinite(y_pred)
+y_true = y_true[mask]
+y_pred = y_pred[mask]
+
+mae = mean_absolute_error(y_true, y_pred)
+rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
+
+print("\n=== Cold-Start Evaluation (Launch Month) ===")
+print(f"MAE : {mae:.2f}")
+print(f"RMSE: {rmse:.2f}")
+print(f"MAPE: {mape:.2f}%")

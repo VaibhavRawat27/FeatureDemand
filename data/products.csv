@@ -1,7 +1,25 @@
-product_id,category,price,description,monthly_demand
-P001,Audio,1499,"Wireless bluetooth earphones with mic",8200
-P002,Audio,1999,"Neckband earphones with noise cancellation",9800
-P003,Audio,999,"Budget wired earphones",6200
-P004,Audio,2499,"Premium wireless earbuds with ANC",11000
-P005,Audio,1799,"Bluetooth neckband with long battery life",9000
-P006,Audio,2199,"New wireless neckband with ANC and fast charging",?
+product_id,product_name,category,month,avg_price,monthly_units,true_demand,is_launch
+P1001,Wireless Mouse Basic,Technology,2024-03,799,20,20,False
+P1002,Wireless Mouse Pro,Technology,2024-03,1299,26,26,False
+P1003,USB Keyboard Slim,Technology,2024-03,1199,24,24,False
+P1004,USB Keyboard Mechanical,Technology,2024-03,2499,28,28,False
+
+P1011,Office Chair Large,Furniture,2024-03,6499,15,15,False
+P1012,Office Chair Medium,Furniture,2024-03,5999,14,14,False
+P1013,Office Chair Small,Furniture,2024-03,5499,12,12,False
+
+P1021,Wooden Desk Small,Furniture,2024-03,7999,11,11,False
+P1022,Wooden Desk Medium,Furniture,2024-03,8999,13,13,False
+P1023,Wooden Desk Large,Furniture,2024-03,9999,14,14,False
+
+P1031,Smart LED Bulb Red,Home Appliances,2024-03,999,32,32,False
+P1032,Smart LED Bulb Green,Home Appliances,2024-03,999,34,34,False
+P1033,Smart LED Bulb Blue,Home Appliances,2024-03,999,30,30,False
+
+P1041,Electric Kettle 1.5L,Home Appliances,2024-03,1799,22,22,False
+P1042,Electric Kettle 1.8L,Home Appliances,2024-03,1999,24,24,False
+P1043,Electric Kettle Steel,Home Appliances,2024-03,2199,23,23,False
+
+P2001,Bluetooth Earbuds ANC,Technology,2024-03,2999,,16,True
+P2002,Standing Lamp Modern,Furniture,2024-03,2499,,9,True
+P2003,Smart Plug WiFi,Home Appliances,2024-03,1299,,28,True
