@@ -1,0 +1,7 @@
+product_id,category,price,description,monthly_demand
+P001,Audio,1499,"Wireless bluetooth earphones with mic",8200
+P002,Audio,1999,"Neckband earphones with noise cancellation",9800
+P003,Audio,999,"Budget wired earphones",6200
+P004,Audio,2499,"Premium wireless earbuds with ANC",11000
+P005,Audio,1799,"Bluetooth neckband with long battery life",9000
+P006,Audio,2199,"New wireless neckband with ANC and fast charging",?
